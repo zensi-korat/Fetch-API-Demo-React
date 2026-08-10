@@ -1,10 +1,25 @@
 import { useState, useCallback } from "react";
-import type { Consumer } from "./types";
 
+// ── Types (kept in this file so the whole hook is self-contained) ───────────
+type AccountStatus = "active" | "delinquent" | "inactive";
+
+interface Consumer {
+  id: string;
+  consumerNumber: number;
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  email: string;
+  accountStatus: AccountStatus;
+}
+
+// The exact shape the server sends back for POST /api/consumers.
 interface ConsumerResponse {
   consumer: Consumer;
 }
 
+// What the caller must provide to create a consumer: everything EXCEPT the
+// fields the server generates itself (`id` and `consumerNumber`).
 export type CreateConsumerInput = Omit<Consumer, "id" | "consumerNumber">;
 
 /**
@@ -17,6 +32,9 @@ export function useCreateConsumer() {
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  // `useCallback` keeps `mutate` as one stable function across renders, so the
+  // components that use it don't get a different function every render. It's
+  // good hygiene for any function a hook hands back.
   const mutate = useCallback(
     async (input: CreateConsumerInput): Promise<Consumer> => {
       setIsPending(true);

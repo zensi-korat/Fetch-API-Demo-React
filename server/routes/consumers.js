@@ -47,15 +47,70 @@ async function requireAuth(req, res, next) {
 export const consumersRouter = Router();
 consumersRouter.use(requireAuth); // every route below requires a valid cookie
 
-/** GET /api/consumers -> { consumers: Consumer[] } */
-consumersRouter.get("/", async (_req, res) => {
-  const { data, error } = await supabaseAdmin
+/**
+ * GET /api/consumers?search=&page=&pageSize=
+ *   -> { consumers: Consumer[], total, page, pageSize }
+ *
+ * SEARCH and PAGINATION now happen on the SERVER, driven by URL query params:
+ *   - search:   text to match against name/email (case-insensitive)
+ *   - page:     which page to return (1-based)
+ *   - pageSize: how many rows per page
+ *
+ * The response includes `total` (how many rows match the search in TOTAL, not
+ * just on this page) so the frontend can show "Showing 1–10 of 42" and know how
+ * many pages exist.
+ */
+consumersRouter.get("/", async (req, res) => {
+  // 1. Read the query params off the URL. They're always strings (or missing),
+  //    so we clean them up and apply sensible defaults.
+  const search = (req.query.search ?? "").toString().trim();
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize, 10) || 10));
+
+  // SORTING: only allow sorting by known columns (a whitelist). This maps the
+  // frontend's field name to the real DB column and blocks anything else, so a
+  // user can't inject a random column name. Falls back to consumer_number.
+  const SORT_COLUMNS = {
+    consumerNumber: "consumer_number",
+    name: "first_name",
+    email: "email",
+    accountStatus: "account_status",
+  };
+  const sortColumn = SORT_COLUMNS[req.query.sort] ?? "consumer_number";
+  const ascending = req.query.dir !== "desc"; // default ascending unless "desc"
+
+  // 2. Turn "page + pageSize" into a row range. `.range()` is 0-based and
+  //    inclusive: page 1 / size 10 -> rows 0..9; page 2 -> rows 10..19.
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  // 3. Build the query. `count: "exact"` asks Supabase for the total number of
+  //    matching rows (ignoring the range), which we need for the page count.
+  let query = supabaseAdmin
     .from(TABLE)
-    .select(COLS)
-    .order("consumer_number", { ascending: true });
+    .select(COLS, { count: "exact" })
+    .order(sortColumn, { ascending });
+
+  // 4. If there's a search term, match it against any of these columns.
+  //    `ilike` is case-insensitive "contains"; `%term%` means "term anywhere".
+  if (search) {
+    const like = `%${search}%`;
+    query = query.or(
+      `first_name.ilike.${like},middle_name.ilike.${like},last_name.ilike.${like},email.ilike.${like}`,
+    );
+  }
+
+  // 5. Apply the page range LAST and run the query.
+  const { data, error, count } = await query.range(from, to);
 
   if (error) return res.status(500).json({ message: error.message });
-  res.json({ consumers: data.map(rowToConsumer) });
+
+  res.json({
+    consumers: data.map(rowToConsumer),
+    total: count ?? 0,
+    page,
+    pageSize,
+  });
 });
 
 /** POST /api/consumers -> { consumer: Consumer } */
@@ -97,6 +152,90 @@ consumersRouter.get("/:id", async (req, res) => {
       return res.status(404).json({ message: "Consumer not found" });
     }
     return res.status(500).json({ message: error.message });
+  }
+
+  res.json({ consumer: rowToConsumer(data) });
+});
+
+/**
+ * PUT /api/consumers/:id -> { consumer: Consumer }
+ *
+ * FULL REPLACE. The client must send every editable field; anything omitted is
+ * reset (middleName defaults to ""). Use PUT when you want to overwrite the
+ * whole record, not just tweak a field.
+ */
+consumersRouter.put("/:id", async (req, res) => {
+  const body = req.body;
+  if (
+    !body ||
+    typeof body.firstName !== "string" ||
+    typeof body.lastName !== "string" ||
+    typeof body.email !== "string" ||
+    typeof body.accountStatus !== "string"
+  ) {
+    return res.status(400).json({
+      message:
+        "firstName, lastName, email, and accountStatus are all required for a full replace (PUT)",
+    });
+  }
+
+  // Build a COMPLETE row — every column is set, so unspecified optional fields
+  // (middleName) are explicitly cleared. That's what makes this a "replace".
+  const fullRow = {
+    first_name: body.firstName,
+    middle_name: body.middleName ?? "",
+    last_name: body.lastName,
+    email: body.email,
+    account_status: body.accountStatus,
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from(TABLE)
+    .update(fullRow)
+    .eq("id", req.params.id)
+    .select(COLS)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116" || error.code === "22P02") {
+      return res.status(404).json({ message: "Consumer not found" });
+    }
+    return res.status(400).json({ message: error.message });
+  }
+
+  res.json({ consumer: rowToConsumer(data) });
+});
+
+/**
+ * PATCH /api/consumers/:id -> { consumer: Consumer }
+ *
+ * PARTIAL UPDATE. The client sends ONLY the fields that changed; everything
+ * else is left as-is. `consumerToRow` already drops undefined fields, so it
+ * naturally produces a partial row.
+ */
+consumersRouter.patch("/:id", async (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== "object") {
+    return res.status(400).json({ message: "A JSON body is required" });
+  }
+
+  const row = consumerToRow(body); // only the provided fields survive
+  if (Object.keys(row).length === 0) {
+    return res.status(400).json({ message: "No valid fields to update" });
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from(TABLE)
+    .update(row)
+    .eq("id", req.params.id)
+    .select(COLS)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116" || error.code === "22P02") {
+      return res.status(404).json({ message: "Consumer not found" });
+    }
+    return res.status(400).json({ message: error.message });
   }
 
   res.json({ consumer: rowToConsumer(data) });

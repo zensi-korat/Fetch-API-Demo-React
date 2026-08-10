@@ -2,6 +2,7 @@
 import {
   type ColumnDef,
   type SortingState,
+  type OnChangeFn,
   type ColumnFiltersState,
   type ExpandedState,
   type Row,
@@ -58,6 +59,16 @@ interface DataTableProps<TData, TValue> {
   singleExpand?: boolean;
   /** When true, clicking anywhere on a row toggles its expansion (requires renderSubRow). */
   expandOnRowClick?: boolean;
+  /**
+   * Controlled sorting. Pass these to drive sorting from the PARENT (e.g. for
+   * server-side sorting). When `manualSorting` is true, the table does NOT
+   * reorder rows itself — it just reports header clicks via `onSortingChange`,
+   * and you re-fetch already-sorted rows. Leave all three out for the default
+   * client-side sorting.
+   */
+  sorting?: SortingState;
+  onSortingChange?: OnChangeFn<SortingState>;
+  manualSorting?: boolean;
 }
 
 export function DataTable<TData, TValue>({
@@ -74,21 +85,30 @@ export function DataTable<TData, TValue>({
   renderSubRow,
   singleExpand,
   expandOnRowClick,
+  sorting,
+  onSortingChange,
+  manualSorting,
 }: DataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
+  // If the parent passes `sorting`/`onSortingChange`, sorting is CONTROLLED by
+  // the parent; otherwise fall back to this internal state (client-side).
+  const [internalSorting, setInternalSorting] = useState<SortingState>([]);
+  const sortingState = sorting ?? internalSorting;
+  const handleSortingChange = onSortingChange ?? setInternalSorting;
+
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [expanded, setExpanded] = useState<ExpandedState>({});
 
   const table = useReactTable({
     data,
     columns,
+    manualSorting, // when true, don't reorder rows here — the server already did
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: showPagination ? getPaginationRowModel() : undefined,
     getExpandedRowModel: renderSubRow ? getExpandedRowModel() : undefined,
     getRowCanExpand: renderSubRow ? () => true : undefined,
-    onSortingChange: setSorting,
+    onSortingChange: handleSortingChange,
     onColumnFiltersChange: setColumnFilters,
     onExpandedChange: (updater) => {
       setExpanded((old) => {
@@ -103,7 +123,7 @@ export function DataTable<TData, TValue>({
       });
     },
     state: {
-      sorting,
+      sorting: sortingState,
       columnFilters,
       globalFilter: searchValue,
       expanded,

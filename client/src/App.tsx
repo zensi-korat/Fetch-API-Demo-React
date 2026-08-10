@@ -7,6 +7,7 @@ import DashboardHome from "@/pages/DashboardHome";
 import ConsumersListPage from "@/pages/ConsumersListPage";
 import ConsumerAddPage from "@/pages/ConsumerAddPage";
 import ConsumerDetailPage from "@/pages/ConsumerDetailPage";
+import ConsumerEditPage from "@/pages/ConsumerEditPage";
 
 /**
  * The whole app's routing tree. This replaces Next.js's file-based routing
@@ -38,6 +39,7 @@ export default function App() {
               <Route path="consumers" element={<ConsumersListPage />} />
               <Route path="consumers/add" element={<ConsumerAddPage />} />
               <Route path="consumers/:id" element={<ConsumerDetailPage />} />
+              <Route path="consumers/:id/edit" element={<ConsumerEditPage />} />
             </Route>
           </Routes>
         </AuthProvider>

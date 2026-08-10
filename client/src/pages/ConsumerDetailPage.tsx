@@ -16,8 +16,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useConsumerDetail } from "@/features/consumers/useConsumerDetail";
-import { useDeleteConsumer } from "@/features/consumers/useDeleteConsumer";
+import { useConsumerDetail } from "@/features/consumers/get/useConsumerDetail";
+import { useDeleteConsumer } from "@/features/consumers/delete/useDeleteConsumer";
 import { ACCOUNT_STATUS_CONFIG } from "@/features/consumers/consumers-page.data";
 
 export default function ConsumerDetailPage() {
@@ -97,6 +97,10 @@ export default function ConsumerDetailPage() {
             </div>
           </div>
 
+          <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => navigate(`/consumers/${consumer.id}/edit`)}>
+            Edit Consumer
+          </Button>
           <AlertDialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <AlertDialogTrigger asChild>
               <Button variant="destructive">Delete Consumer</Button>
@@ -123,6 +127,7 @@ export default function ConsumerDetailPage() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          </div>
         </CardContent>
       </Card>
     </div>

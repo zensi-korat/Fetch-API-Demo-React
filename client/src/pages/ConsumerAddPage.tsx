@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCreateConsumer } from "@/features/consumers/useCreateConsumer";
+import { useCreateConsumer } from "@/features/consumers/post/useCreateConsumer";
 import type { AccountStatus } from "@/features/consumers/types";
 
 export default function ConsumerAddPage() {
