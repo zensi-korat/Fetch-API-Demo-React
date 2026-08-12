@@ -21,13 +21,13 @@ export const consumersColumns: ColumnDef<Consumer>[] = [
         </span>
       );
     },
-    enableSorting: true,
+    enableSorting: false,
   },
   {
     id: "name",
     accessorFn: (row) => getFullName(row),
     header: "Consumer Name",
-    enableSorting: true,
+    enableSorting: false,
   },
   {
     accessorKey: "accountStatus",

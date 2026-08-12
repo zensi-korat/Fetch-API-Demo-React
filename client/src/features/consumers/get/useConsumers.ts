@@ -21,13 +21,11 @@ interface ConsumersResponse {
   pageSize: number;
 }
 
-// What the caller (the page) passes in to control search + pagination + sorting.
+// What the caller (the page) passes in to control search + pagination.
 interface UseConsumersParams {
   search: string;
   page: number;
   pageSize: number;
-  sort?: string; // which column to sort by, e.g. "name" (optional)
-  dir?: "asc" | "desc"; // sort direction (optional)
 }
 
 /**
@@ -38,7 +36,7 @@ interface UseConsumersParams {
  *   /api/consumers?search=jane&page=2&pageSize=10
  * and re-fetch. The server returns just that page of rows plus `total`.
  */
-export function useConsumers({ search, page, pageSize, sort, dir }: UseConsumersParams) {
+export function useConsumers({ search, page, pageSize }: UseConsumersParams) {
   const [consumers, setConsumers] = useState<Consumer[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -61,11 +59,6 @@ export function useConsumers({ search, page, pageSize, sort, dir }: UseConsumers
         if (search) params.set("search", search);
         params.set("page", String(page));
         params.set("pageSize", String(pageSize));
-        // Only send sorting params when a column is actively sorted.
-        if (sort && dir) {
-          params.set("sort", sort);
-          params.set("dir", dir);
-        }
 
         const res = await fetch(`/api/consumers?${params.toString()}`);
         if (!res.ok) {
@@ -92,7 +85,7 @@ export function useConsumers({ search, page, pageSize, sort, dir }: UseConsumers
     return () => {
       ignore = true;
     };
-  }, [search, page, pageSize, sort, dir]);
+  }, [search, page, pageSize]);
 
   return { consumers, total, isLoading, isError, error };
 }

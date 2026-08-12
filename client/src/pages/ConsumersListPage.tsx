@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import type { SortingState, OnChangeFn } from "@tanstack/react-table";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +23,7 @@ export default function ConsumersListPage() {
       (prev) => {
         const next = new URLSearchParams(prev);
         for (const [key, value] of Object.entries(changes)) {
+           console.log(`Changed ${key} to ${value}`);
           if (value === undefined || value === "") next.delete(key);
           else next.set(key, String(value));
         }
@@ -62,33 +62,11 @@ export default function ConsumersListPage() {
   // Changing rows-per-page resets to page 1 (a page-5 might no longer exist).
   const changePageSize = (size: number) => updateParams({ pageSize: size, page: undefined });
 
-  // ═══════════════════════════════════════════════════════════════════════
-  //  SORTING   —   URL params:  ?sort=  &  ?dir=
-  // ═══════════════════════════════════════════════════════════════════════
-  const sort = searchParams.get("sort") ?? undefined;
-  const dir = (searchParams.get("dir") as "asc" | "desc" | null) ?? undefined;
-
-  // The table understands sorting as an array; build it from the two URL params.
-  const sorting: SortingState = sort && dir ? [{ id: sort, desc: dir === "desc" }] : [];
-
-  // When a header is clicked, write the new sort back to the URL (and reset page).
-  const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
-    const next = typeof updater === "function" ? updater(sorting) : updater;
-    const first = next[0];
-    updateParams({
-      sort: first?.id,
-      dir: first ? (first.desc ? "desc" : "asc") : undefined,
-      page: undefined,
-    });
-  };
-
   // ── Fetch the data. Re-runs whenever any URL-derived value above changes. ──
   const { consumers, total, isLoading, isError, error } = useConsumers({
     search,
     page,
     pageSize,
-    sort,
-    dir,
   });
 
   // Pagination display numbers — computed here because they need `total`, which
@@ -96,6 +74,106 @@ export default function ConsumersListPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
+
+  // The three states (loading / error / data) are picked here with plain early
+  // returns instead of a nested ternary inside JSX — same output, easier to read.
+  function renderContent() {
+    if (isLoading) {
+      return (
+        <div className="space-y-3" aria-busy="true" aria-label="Loading consumers">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      );
+    }
+
+    if (isError) {
+      return (
+        <div
+          className="flex flex-col items-center justify-center gap-2 py-16 text-center"
+          role="alert"
+        >
+          <p className="text-sm font-medium">Failed to load consumers</p>
+          <p className="text-sm text-muted-foreground">
+            {error instanceof Error ? error.message : "Something went wrong."}
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {/* The table just renders the rows the server already paged for us,
+            so we turn OFF its built-in pagination. */}
+        <DataTable
+          columns={consumersColumns}
+          data={consumers}
+          showPagination={false}
+          emptyMessage="No consumers found."
+          onRowClick={(consumer) => navigate(`/consumers/${consumer.id}`)}
+        />
+
+        {/* ── PAGINATION controls (raw, no library) ──────────────────── */}
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm text-muted-foreground">
+            Showing {start}–{end} of {total} results
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Rows-per-page */}
+            <select
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+              value={pageSize}
+              onChange={(e) => changePageSize(Number(e.target.value))}
+              aria-label="Rows per page"
+            >
+              <option value={5}>5 / page</option>
+              <option value={10}>10 / page</option>
+              <option value={20}>20 / page</option>
+              <option value={50}>50 / page</option>
+            </select>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => goToPage(page - 1)}
+              disabled={page <= 1}
+              aria-label="Go to previous page"
+            >
+              Previous
+            </Button>
+
+            <div className="flex items-center gap-1" role="group" aria-label="Page navigation">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <Button
+                  key={p}
+                  variant={p === page ? "default" : "outline"}
+                  size="sm"
+                  className="size-8"
+                  onClick={() => goToPage(p)}
+                  aria-label={`Go to page ${p}`}
+                  aria-current={p === page ? "page" : undefined}
+                >
+                  {p}
+                </Button>
+              ))}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => goToPage(page + 1)}
+              disabled={page >= totalPages}
+              aria-label="Go to next page"
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <div className="flex flex-col flex-1 h-full">
@@ -132,99 +210,7 @@ export default function ConsumersListPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 md:p-6">
-        {isLoading ? (
-          <div className="space-y-3" aria-busy="true" aria-label="Loading consumers">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
-            ))}
-          </div>
-        ) : isError ? (
-          <div
-            className="flex flex-col items-center justify-center gap-2 py-16 text-center"
-            role="alert"
-          >
-            <p className="text-sm font-medium">Failed to load consumers</p>
-            <p className="text-sm text-muted-foreground">
-              {error instanceof Error ? error.message : "Something went wrong."}
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* The table just renders the rows the server already paged for us,
-                so we turn OFF its built-in pagination. */}
-            <DataTable
-              columns={consumersColumns}
-              data={consumers}
-              showPagination={false}
-              emptyMessage="No consumers found."
-              onRowClick={(consumer) => navigate(`/consumers/${consumer.id}`)}
-              // SORTING: the header reports clicks, the DB does the sorting.
-              sorting={sorting}
-              onSortingChange={handleSortingChange}
-              manualSorting
-            />
-
-            {/* ── PAGINATION controls (raw, no library) ──────────────────── */}
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing {start}–{end} of {total} results
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* Rows-per-page */}
-                <select
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
-                  value={pageSize}
-                  onChange={(e) => changePageSize(Number(e.target.value))}
-                  aria-label="Rows per page"
-                >
-                  <option value={5}>5 / page</option>
-                  <option value={10}>10 / page</option>
-                  <option value={20}>20 / page</option>
-                  <option value={50}>50 / page</option>
-                </select>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => goToPage(page - 1)}
-                  disabled={page <= 1}
-                  aria-label="Go to previous page"
-                >
-                  Previous
-                </Button>
-
-                <div className="flex items-center gap-1" role="group" aria-label="Page navigation">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <Button
-                      key={p}
-                      variant={p === page ? "default" : "outline"}
-                      size="sm"
-                      className="size-8"
-                      onClick={() => goToPage(p)}
-                      aria-label={`Go to page ${p}`}
-                      aria-current={p === page ? "page" : undefined}
-                    >
-                      {p}
-                    </Button>
-                  ))}
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => goToPage(page + 1)}
-                  disabled={page >= totalPages}
-                  aria-label="Go to next page"
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+      <div className="flex-1 overflow-auto p-4 md:p-6">{renderContent()}</div>
     </div>
   );
 }

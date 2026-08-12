@@ -67,18 +67,6 @@ consumersRouter.get("/", async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize, 10) || 10));
 
-  // SORTING: only allow sorting by known columns (a whitelist). This maps the
-  // frontend's field name to the real DB column and blocks anything else, so a
-  // user can't inject a random column name. Falls back to consumer_number.
-  const SORT_COLUMNS = {
-    consumerNumber: "consumer_number",
-    name: "first_name",
-    email: "email",
-    accountStatus: "account_status",
-  };
-  const sortColumn = SORT_COLUMNS[req.query.sort] ?? "consumer_number";
-  const ascending = req.query.dir !== "desc"; // default ascending unless "desc"
-
   // 2. Turn "page + pageSize" into a row range. `.range()` is 0-based and
   //    inclusive: page 1 / size 10 -> rows 0..9; page 2 -> rows 10..19.
   const from = (page - 1) * pageSize;
@@ -89,7 +77,7 @@ consumersRouter.get("/", async (req, res) => {
   let query = supabaseAdmin
     .from(TABLE)
     .select(COLS, { count: "exact" })
-    .order(sortColumn, { ascending });
+    .order("consumer_number", { ascending: true });
 
   // 4. If there's a search term, match it against any of these columns.
   //    `ilike` is case-insensitive "contains"; `%term%` means "term anywhere".

@@ -47,7 +47,7 @@ export default function ConsumerEditPage() {
   }, [consumer]);
 
   // ── PATCH: send ONLY the fields that actually changed ─────────────────────
-  async function handlePatch(e: FormEvent<HTMLFormElement>) {
+  async function handlePatch(e: { preventDefault: () => void; }) {
     e.preventDefault();
     if (!consumer) return;
 
